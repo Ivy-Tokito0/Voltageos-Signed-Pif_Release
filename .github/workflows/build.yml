@@ -1,37 +1,107 @@
 name: Sign PifPrebuilt
+
 on:
   workflow_call:
-  workflow_dispatch:
+    inputs:
+      from_ci:
+        type: boolean
+        required: false
+        default: true
+      HASH:
+        type: string
+        required: true
+      SHORT_HASH:
+        type: string
+        required: true
 
 jobs:
-  check:
-  permissions: write-all
-  runs-on: ubuntu-latest
-  steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+  build:
+    permissions: write-all
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Fetch Keys
-      uses: action/checkout@v4
-      with:
-        repository: 'Ivy-Tokito/Private_keys'
-        token: ${{ secrets.GH_TOKEN }}
-        path: 'keys'
+      - name: Fetch Keys
+        uses: actions/checkout@v4
+        with:
+          repository: 'Ivy-Tokito/Private_keys'
+          token: ${{ secrets.GH_TOKEN }}
+          path: 'keys'
 
-    - name: Fetch Pif repo
-      uses: action/checkout@v4
-      with:
-        repository: 'voltageos/vendor_certification'
-        path: 'certification'
+      - name: Fetch Pif repo
+        run: |
+          sudo apt update && sudo apt upgrade -y
+          sudo apt install git python3
+          git config --global user.name "GitHub Actions [Bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git clone --depth=1 https://gitlab.com/voltageos/vendor_certification.git certification
 
-    - uses: actions/setup-java@v4
-      with:
-        distribution: "zulu"
-        java-version: "17"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "zulu"
+          java-version: "17"
 
-    - name: Sign Pif
-      env:
-        pif_dir: certification/PifPrebuilt
-      run: |
-        mkdir -p /out
-        java -Xmx2048m -Djava.library.path="lib64" -jar signapk.jar keys/platform.x509.pem keys/platform.pk8 $pif_dir/PifPrebuilt.apk out/signedPif.apk
+      - name: Sign Pif
+        env:
+          pif_dir: certification/PifPrebuilt
+        run: |
+          mkdir -p out
+          java -Xmx2048m -Djava.library.path="lib64" -jar signapk.jar keys/platform.x509.pem keys/platform.pk8 $pif_dir/PifPrebuilt.apk out/signedPif.apk
+
+      - name: check for release
+        id: release
+        env:
+          HASH: ${{ inputs.HASH }}
+        run: |
+          APK_HASH="$(sha256sum out/signedPif.apk | awk -F ' ' '{ print $1 }')"
+          PREV_APK_HASH="$(grep "APK_Hash" .hash | cut -f2 -d '=:' | tr -d '"')"
+          if [[ "$APK_HASH" == "$PREV_APK_HASH" ]]; then
+            echo "SHOULD_RELEASE=0" >> $GITHUB_OUTPUT
+          else
+            echo "SHOULD_RELEASE=1" >> $GITHUB_OUTPUT
+            sed -i "s/\(Commit_Hash=\"\)[^\"]*\"/\1$HASH\"/" .hash
+            sed -i "s/\(APK_Hash=\"\)[^\"]*\"/\1$APK_HASH\"/" .hash
+          fi
+
+      - name: Commit Hash
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          file_pattern: '.hash'
+          commit_message: 'Pif: update hash'
+
+      - name: Get Release Description
+        id: description
+        run: |
+          echo -e "$(curl -s https://gitlab.com/api/v4/projects/52847655/repository/commits | jq -r '.[0].message')" > build.md
+          DELIM="$(openssl rand -hex 8)"
+          echo "BUILD_LOG<<${DELIM}" >> "$GITHUB_OUTPUT"
+          cat build.md >> "$GITHUB_OUTPUT"
+          echo "${DELIM}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload To Release
+        if: ${{ steps.release.outputs.SHOULD_RELEASE == 1 }}
+        uses: svenstaro/upload-release-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          file: out/*.apk
+          release_name: Pif Signed Release
+          body: ${{ steps.description.outputs.BUILD_LOG }}
+          tag: ${{ inputs.SHORT_HASH }}
+          file_glob: true
+
+      - name: Upload To Telegram
+        if: ${{ steps.release.outputs.SHOULD_RELEASE == 1 }}
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          MESSAGE: ${{ inputs.MESSAGE }}
+        run: |
+          [[ -z "$TG_TOKEN" ]] && { echo "TG Token Not Found"; exit 0;}
+          TG_CHAT="@Tokitobuilds_to"
+
+          MSG="VoltageOS Play Integrity Fix
+          Build Date: $(date +%d/%m/%Y)"
+
+          POST="https://api.telegram.org/bot${TG_TOKEN}/sendDocument"
+          curl -F document="out/signedPif.apk" -F chat_id="$TG_CHAT" -F parse_mode="Markdown" -F caption="$MSG"
