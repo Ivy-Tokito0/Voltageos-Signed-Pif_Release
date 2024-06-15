@@ -1,0 +1,37 @@
+name: Sign PifPrebuilt
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  check:
+  permissions: write-all
+  runs-on: ubuntu-latest
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Fetch Keys
+      uses: action/checkout@v4
+      with:
+        repository: 'Ivy-Tokito/Private_keys'
+        token: ${{ secrets.GH_TOKEN }}
+        path: 'keys'
+
+    - name: Fetch Pif repo
+      uses: action/checkout@v4
+      with:
+        repository: 'voltageos/vendor_certification'
+        path: 'certification'
+
+    - uses: actions/setup-java@v4
+      with:
+        distribution: "zulu"
+        java-version: "17"
+
+    - name: Sign Pif
+      env:
+        pif_dir: certification/PifPrebuilt
+      run: |
+        mkdir -p /out
+        java -Xmx2048m -Djava.library.path="lib64" -jar signapk.jar keys/platform.x509.pem keys/platform.pk8 $pif_dir/PifPrebuilt.apk out/signedPif.apk
