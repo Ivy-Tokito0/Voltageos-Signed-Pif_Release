@@ -74,6 +74,7 @@ jobs:
         id: description
         run: |
           echo -e "$(curl -s https://gitlab.com/api/v4/projects/52847655/repository/commits | jq -r '.[0].message')" > build.md
+          echo -e "\nMD5 Checksum: $(md5sum out/signedPif.apk | awk -F ' ' '{ print $1 }')" >> build.md
           DELIM="$(openssl rand -hex 8)"
           echo "BUILD_LOG<<${DELIM}" >> "$GITHUB_OUTPUT"
           cat build.md >> "$GITHUB_OUTPUT"
@@ -101,7 +102,8 @@ jobs:
           TG_CHAT="@Tokitobuilds_to"
 
           MSG="VoltageOS Play Integrity Fix
-          Build Date: $(date +%d/%m/%Y)"
+          Build Date: $(date +%d/%m/%Y)
+          MD5 Checksum: $(md5sum out/signedPif.apk | awk -F ' ' '{ print $1 }')"
 
           POST="https://api.telegram.org/bot${TG_TOKEN}/sendDocument"
           curl -F document="out/signedPif.apk" -F chat_id="$TG_CHAT" -F parse_mode="Markdown" -F caption="$MSG"
