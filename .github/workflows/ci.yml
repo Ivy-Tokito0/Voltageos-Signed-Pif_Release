@@ -39,7 +39,6 @@ jobs:
       SHOULD_BUILD: ${{ steps.should_build.outputs.SHOULD_BUILD }}
       HASH: ${{ steps.should_build.outputs.HASH }}
       SHORT_HASH: ${{ steps.should_build.outputs.SHORT_HASH }}
-      MESSAGE: ${{ steps.should_build.outputs.MESSAGE }}
 
   build:
     permissions: write-all

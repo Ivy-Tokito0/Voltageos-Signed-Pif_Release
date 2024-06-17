@@ -71,8 +71,11 @@ jobs:
 
       - name: Get Release Description
         id: description
+        env:
+          HASH: ${{ inputs.HASH }}
         run: |
-          echo -e "$(curl -s https://gitlab.com/api/v4/projects/52847655/repository/commits | jq -r '.[0].message')" > build.md
+          echo -e Commit: https://gitlab.com/voltageos/vendor_certification/-/commit/${HASH} > build.md
+          echo -e "$(curl -s https://gitlab.com/api/v4/projects/52847655/repository/commits | jq -r '.[0].message')" >> build.md
           echo -e "\nMD5 Checksum: $(md5sum out/signedPif.apk | awk -F ' ' '{ print $1 }')" >> build.md
           DELIM="$(openssl rand -hex 8)"
           echo "BUILD_LOG<<${DELIM}" >> "$GITHUB_OUTPUT"
@@ -95,7 +98,6 @@ jobs:
         if: ${{ steps.release.outputs.SHOULD_RELEASE == 1 }}
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
-          MESSAGE: ${{ inputs.MESSAGE }}
         run: |
           [[ -z "$TG_TOKEN" ]] && { echo "TG Token Not Found"; exit 0;}
           TG_CHAT="@Tokitobuilds_to"
@@ -105,4 +107,4 @@ jobs:
           MD5 Checksum: $(md5sum out/signedPif.apk | awk -F ' ' '{ print $1 }')"
 
           POST="https://api.telegram.org/bot${TG_TOKEN}/sendDocument"
-          curl -F document="out/signedPif.apk" -F chat_id="$TG_CHAT" -F parse_mode="Markdown" -F caption="$MSG"
+          curl $POST -F document="out/signedPif.apk" -F chat_id="$TG_CHAT" -F parse_mode="Markdown" -F caption="$MSG" 
