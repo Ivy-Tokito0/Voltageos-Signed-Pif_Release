@@ -25,13 +25,13 @@ jobs:
       - name: Fetch Keys
         uses: actions/checkout@v4
         with:
-          repository: 'Ivy-Tokito/Private_keys'
+          repository: 'Ivy-Tokito0/Private_keys'
           token: ${{ secrets.GH_TOKEN }}
+          ref: 'voltage-14'
           path: 'keys'
 
       - name: Fetch Pif repo
         run: |
-          sudo apt update && sudo apt install git
           git config --global user.name "GitHub Actions [Bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git clone --depth=1 https://gitlab.com/voltageos/vendor_certification.git certification
@@ -46,7 +46,7 @@ jobs:
           pif_dir: certification/PifPrebuilt
         run: |
           mkdir -p out
-          java -Xmx2048m -Djava.library.path="lib64" -jar signapk.jar keys/platform.x509.pem keys/platform.pk8 $pif_dir/PifPrebuilt.apk out/signedPif.apk
+          java -Xmx2048m -Djava.library.path="lib64" -jar signapk.jar keys/keys/platform.x509.pem keys/keys/platform.pk8 $pif_dir/PifPrebuilt.apk out/signedPif.apk
 
       - name: check for release
         id: release
@@ -54,7 +54,7 @@ jobs:
           HASH: ${{ inputs.HASH }}
         run: |
           APK_HASH="$(sha256sum out/signedPif.apk | awk -F ' ' '{ print $1 }')"
-          PREV_APK_HASH="$(grep "APK_Hash" .hash | cut -f2 -d '=:' | tr -d '"')"
+          PREV_APK_HASH="$(grep "APK_Hash" .hash | cut -f2 -d '=' | tr -d '"')"
           if [[ "$APK_HASH" == "$PREV_APK_HASH" ]]; then
             echo "SHOULD_RELEASE=0" >> $GITHUB_OUTPUT
           else
@@ -100,11 +100,16 @@ jobs:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
         run: |
           [[ -z "$TG_TOKEN" ]] && { echo "TG Token Not Found"; exit 0;}
-          TG_CHAT="@Tokitobuilds_to"
+          TG_CHAT="-1001875316065"
 
-          MSG="VoltageOS Play Integrity Fix
-          Build Date: $(date +%d/%m/%Y)
-          MD5 Checksum: $(md5sum out/signedPif.apk | awk -F ' ' '{ print $1 }')"
+          MSG="**VoltageOS Play Integrity Fix**
+          **Build Date**: $(date "+%d/%m/%Y %X")
+          **MD5 Checksum**: $(md5sum out/signedPif.apk | awk -F ' ' '{ print $1 }')"
 
           POST="https://api.telegram.org/bot${TG_TOKEN}/sendDocument"
-          curl $POST -F document="out/signedPif.apk" -F chat_id="$TG_CHAT" -F parse_mode="Markdown" -F caption="$MSG" 
+
+          curl -X POST $POST \
+          -H "Content-Type: multipart/form-data" \
+          -F "chat_id=$TG_CHAT" \
+          -F "document=@out/signedPif.apk" \
+          -F "parse_mode=Markdown" -F "caption=$MSG"
